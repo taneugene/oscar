@@ -91,19 +91,14 @@ def get_basic_info(path):
     # print(fname)
     m = re.match("^([A-Z]{2})-([FPUM])([DU]{0,1})-([0-9]{1,4})-([0-9])*\.tif$", fname)
     d = {}
+    d['folder'] = path[:-neg_pos]
     d['path'] = path
     d['filename'] = m[0]
     d['iso2'] = m[1]
     d['type'] = m[2]
     d['return_period'] = int(m[4])
     d['tile'] = int(m[5])
-    if m[3] == "D":
-        d['defended'] = True
-    elif m[3] == 'U':
-        d['defended'] = False
-    else:
-        print("Regex is not capturing defended-ness from filename correctly")
-        assert(False)
+    d['defended'] = m[3]
     return d
 def gpw_basic_info(asset_fname):
     f = asset_fname[-(asset_fname[::-1].find('/')):]
@@ -115,6 +110,9 @@ def gpw_basic_info(asset_fname):
 def get_param_info(flist):
     lis = [get_basic_info(f) for f in flist]
     d = {}
+    d['folder'] = lis[0]['folder']
+    d['flist'] = sorted(pd.Series([d['filename']for d in lis]).unique())
+    d['defended'] = lis[0]['defended']
     d['iso2'] = lis[0]['iso2']
     d['type'] = lis[0]['type']
     d['rps'] = sorted(pd.Series([d['return_period']for d in lis]).unique())
@@ -228,22 +226,55 @@ def get_tiles(country, folder, rp):
     exposures = sorted(glob.glob('data_exposures/gpw/{}*'.format(c)))[:-1]
     return floods, exposures
 def Rasterize(shapefile, inras, outras):
-    """From: https://gist.github.com/mhweber/1a07b0881c2ab88d062e3b32060e5486"""
+    if exists(outras):
+        print('{} already exists'.format(outras))
+        return
     with rasterio.open(inras) as src:
         kwargs = src.meta.copy()
         kwargs.update({
             'driver': 'GTiff',
-            'compress': 'lzw'
+            'compress': 'DEFLATE'
         })
-        windows = src.block_windows(1)
         with rasterio.open(outras, 'w', **kwargs) as dst:
-            for idx, window in windows:
-                out_arr = np.zeros_like(src.read(1, window=window))
-                # this is where we create a generator of geom, value pairs to use in rasterizing
-                shapes = ((geom,value) for geom, value in zip(shapefile.geometry, shapefile.index))
-                burned = features.rasterize(shapes=shapes, fill=0, out=out_arr, transform=src.transform)
-                dst.write_band(1, burned, window=window)
+            out_arr = np.zeros_like(src.read(1))
+            # this is where we create a generator of geom, value pairs to use in rasterizing
+            shapes = ((geom,value) for geom, value in zip(shapefile.geometry, shapefile.index))
+            burned = features.rasterize(shapes=shapes, fill=0, out=out_arr, transform=src.transform)
+            dst.write_band(1, burned)
 
+def vulnerability(hazard, exposure):
+    assert hazard.shape == exposure.shape
+    hazard = hazard.astype(bool)
+    damage = exposure * hazard
+    return damage
+
+def estimate_affected(row, country, params):
+    # Loop through tiles for each basin
+    print(row.name)
+    for tile in params['tiles']:
+        # Get the raster of basin == the current basin
+        fname = './data_exposures/{}_hybas_raster_{}.tif'.format(params['iso2'], tile)
+        hybas = gtiff_to_array(fname)
+        hybas_mask = (hybas == row.name)
+        # Get the raster of population
+        exp_fname = './data_exposures/gpw/{}_population_count_{}.tif'.format(params['iso2'], tile)
+        exp = gtiff_to_array(exp_fname)
+        exp[exp<0] = 0
+        # Nearest neighbor went from 30s to 3s
+        exp = exp/100
+        # Get the total population by basin and store it
+        assert hybas_mask.shape == exp.shape
+        total_pop = (hybas_mask*exp)
+        row['basin_pop'] += total_pop.sum()
+        # Loop through return periods
+        for rp in params['rps']:
+            # Get the raster of boolean floods by return period
+            fname = '{}{}-{}{}-{}-{}.tif'.format(params['folder'],c,params['type'],params['defended'], str(int(rp)), tile)
+            floods = get_ssbn_array(fname)
+            # Store the population affected for floods
+            total_affected = vulnerability(floods, total_pop).sum()
+            row[rp] += total_affected
+    return row
 
 # Resample assets grids (e.g. gpw) to the tile sizes that ssbn gives
 country = ['NG','AR','PE','CO']
@@ -260,32 +291,45 @@ for c in country:
 #     flist = sorted(glob.glob(folders(c)[0]+'*250*'))
 #     mosaic(flist)
 
-
-c = 'CO'
+c = 'AR'
 folder = folders(c)[0]
 fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c)
 df = filter_polygons(fname)
+df.plot()
 tiles = sorted((glob.glob(folder+'*')))
 params = get_param_info(tiles)
 floods, exposures = get_tiles(c,folder, params['rps'][0])
 a,gt,s = get_ssbn_array(floods[0], True)
 b = get_bounds(floods[0])
 
-lons = np.array([round(gt[0]+gt[1]*i,5) for i in range(a.shape[1])])
-lats = np.array([round(gt[3]+gt[5]*i,5) for i in range(a.shape[0])])
-loni = np.array([i for i in range(a.shape[1])])
-lati = np.array([i for i in range(a.shape[0])])
-xx,yy = np.meshgrid(lons, lats)
+
+country = ['AR','PE','CO']
+c = 'PE'
+for c in country:
+    fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c)
+    folder = folders(c)[0]
+    flist = sorted(glob.glob(folder+'*'))
+    params = get_param_info(flist)
+    # Get the df of basins
+    df = filter_polygons(fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c))
+    # basins don't change with return period
+    floods, exposures = get_tiles(c,folder, params['rps'][0])
+    for tile in floods:
+        print(tile)
+        d = get_basic_info(tile)
+        outras = './data_exposures/{}_hybas_raster_{}.tif'.format(d['iso2'], d['tile'])
+        Rasterize(df,tile, outras)
+    # Initialize to 0
+    df['basin_pop'] = 0
+    for rp in params['rps']:
+        df[rp] = 0
+    # Apply over basins
+    df = df.apply(estimate_affected, axis = 1, country = c, params = params)
+
+    df.to_file("{}_floods_rp_{}.geojson".format(c,params['type']+params['defended']), driver='GeoJSON')
 
 
-# Try burning the basins to grid.
-out_fn = './{}rasterized_basins.tif'.format(c)
-# Rasterize
 
-# After rasterizing
-df.
-a = Rasterize(df, floods[3], out_fn)
-b = gtiff_to_array(out_fn)
 
 # SSBN Processing
     # Convert to boolean

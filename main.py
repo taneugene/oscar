@@ -6,6 +6,8 @@ import sys
 # user defined libraries
 sys.path.append('lib/')
 import ssbn
+import hydrobasins
+import tifs
 
 # Model parameters
 unzip_all = True
@@ -26,16 +28,7 @@ ssbn.get_basic_info(flist[0])
 
 
 
-
-
-
-# Function to look through a directory and merge tifs into one big tif?
-
-# Function to convert a gtiff to an array
-    # Function to get all the relevant details and metadata from a tif
-
-
-
+# Get to
 
 
 # Ideal Structure of model
