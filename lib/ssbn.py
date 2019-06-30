@@ -13,6 +13,7 @@ import re
 import seaborn as sns
 from shapely.geometry import box,Point, Polygon
 import zipfile
+from lib.vulnerability_flood_depth import damage_function as flood_damage
 
 def unzip(path, pwd):
     """Unzips a zipfile unless the output folder already exists
@@ -241,12 +242,27 @@ def Rasterize(shapefile, inras, outras):
             shapes = ((geom,value) for geom, value in zip(shapefile.geometry, shapefile.index))
             burned = features.rasterize(shapes=shapes, fill=0, out=out_arr, transform=src.transform)
             dst.write_band(1, burned)
-
-def vulnerability(hazard, exposure):
+def vulnerability(hazard, exposure, method ='depth', return_hazard = False):
     assert hazard.shape == exposure.shape
-    hazard = hazard.astype(bool)
+    # Assume all people that get flooded are damaged completely
+    if method == 'depth':
+        # Returns a % damage map based on EU data
+        fd = flood_damage('sa')
+        # Change nans to 0 and round to 1 digit
+        hazard = np.nan_to_num(np.round(hazard, 1))
+        # Fast way to vectorize a dictionary lookup
+        replace = np.array([list(fd.index), list(fd.values)])    # Create 2D replacement matrix
+        # replace values with the %damages
+        hazard = replace[1, np.searchsorted(replace[0, :], hazard)]
+    elif method == 'boolean':
+        hazard = hazard.astype(bool)
+    else:
+        raise AssertionError('vulnerability function not specified correctly')
     damage = exposure * hazard
+    if return_hazard:
+        return damage, hazard
     return damage
+
 
 def estimate_affected(row, country, params):
     # Loop through tiles for each basin
@@ -295,16 +311,13 @@ c = 'AR'
 folder = folders(c)[0]
 fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c)
 df = filter_polygons(fname)
-df.plot()
 tiles = sorted((glob.glob(folder+'*')))
 params = get_param_info(tiles)
 floods, exposures = get_tiles(c,folder, params['rps'][0])
 a,gt,s = get_ssbn_array(floods[0], True)
 b = get_bounds(floods[0])
 
-
-country = ['AR','PE','CO']
-c = 'PE'
+country = ['CO','AR']
 for c in country:
     fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c)
     folder = folders(c)[0]
@@ -325,8 +338,10 @@ for c in country:
         df[rp] = 0
     # Apply over basins
     df = df.apply(estimate_affected, axis = 1, country = c, params = params)
-
+    df.columns = [str(a) for a in df.columns]
     df.to_file("{}_floods_rp_{}.geojson".format(c,params['type']+params['defended']), driver='GeoJSON')
+    # df.to_csv('{}_floods_rp_{}.csv'.format(c,params['type']+params['defended']))
+
 
 
 
