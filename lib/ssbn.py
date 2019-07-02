@@ -175,6 +175,7 @@ def resample_assets_to_ssbn_tiles(ssbn_fname, asset_fname = None, resampleAlg = 
         bounds = get_bounds(ssbn_fname)
         print('creating {}'.format(outfile))
         gdal.Translate(outdir + outfile, get_asset_tif(), xRes = gt[1], yRes = gt[5], projWin = bounds, resampleAlg = resampleAlg, creationOptions = ["COMPRESS=DEFLATE"])
+
 def mosaic(flist):
     """Mosaics or merges by tiling several files"""
     print("\nCombining the following files...")
@@ -203,6 +204,7 @@ def mosaic(flist):
     with rasterio.open(out_fp, "w", **out_meta) as dest:
         dest.write(out_tif)
     return True
+
 def get_bounds(fname, shp = False):
     tif = gdal.Open(fname)
     gt,ts = tif.GetGeoTransform(),(tif.RasterXSize, tif.RasterYSize)
@@ -210,6 +212,7 @@ def get_bounds(fname, shp = False):
         return [Point(gt[0],gt[3]),Point(gt[0]+gt[1]*ts[0], gt[3]+gt[5]*ts[1])]
     else:
         return [gt[0],gt[3],gt[0]+gt[1]*ts[0], gt[3]+gt[5]*ts[1]]
+
 def filter_polygons(fname, hb = './data_exposures/hydrobasins/hybas_sa_lev04_v1c.shp'):
     """Filters a shapefile based on whether the polygons intersect with
     a bounding box based on a geotiff fname."""
@@ -217,19 +220,26 @@ def filter_polygons(fname, hb = './data_exposures/hydrobasins/hybas_sa_lev04_v1c
     # pfa = sorted(glob.glob(basins+'*sa*.shp'))
     # Use pfascetter level 4
     # gpd.read_file(pfa[3])['geometry'].plot()
+    #  Get a list of hydrobasins
     df = gpd.read_file(hb)
+    # Get the extent of
     b = gpd.GeoSeries(box(*get_bounds(fname,False)), crs = {'init': 'epsg:4326'})
     # Need to forward the crs manually wtf geopandas
     b = gpd.GeoDataFrame(b,columns = ['geometry'], crs = b.crs)
     return gpd.overlay( b, df,how = 'intersection')
+
 def get_tiles(country, folder, rp):
     floods = sorted(glob.glob(folder+country+'-*-' + str(rp)+'-*.tif'))
     exposures = sorted(glob.glob('data_exposures/gpw/{}*'.format(c)))[:-1]
     return floods, exposures
+
+
 def Rasterize(shapefile, inras, outras):
+    # if the outraster already exists
     if exists(outras):
         print('{} already exists'.format(outras))
         return
+    #
     with rasterio.open(inras) as src:
         kwargs = src.meta.copy()
         kwargs.update({
@@ -242,58 +252,139 @@ def Rasterize(shapefile, inras, outras):
             shapes = ((geom,value) for geom, value in zip(shapefile.geometry, shapefile.index))
             burned = features.rasterize(shapes=shapes, fill=0, out=out_arr, transform=src.transform)
             dst.write_band(1, burned)
-def vulnerability(hazard, exposure, method ='depth', return_hazard = False):
-    assert hazard.shape == exposure.shape
+
+# def vulnerability(hazard, exposure, method ='depth', return_hazard = False):
+#     assert hazard.shape == exposure.shape
+#     # Assume all people that get flooded are damaged completely
+#     if method == 'depth':
+#         # Returns a % damage map based on EU data
+#         fd = flood_damage('sa')
+#         # Change nans to 0 and round to 1 digit
+#         hazard = np.nan_to_num(np.round(hazard, 1))
+#         # Fast way to vectorize a dictionary lookup
+#         replace = np.array([list(fd.index), list(fd.values)])    # Create 2D replacement matrix
+#         # replace values with the %damages
+#         hazard = replace[1, np.searchsorted(replace[0, :], hazard, side = 'right')-1]
+#     elif method == 'boolean':
+#         hazard = hazard.astype(bool)
+#     else:
+#         raise AssertionError('vulnerability function not specified correctly')
+#     damage = exposure * hazard
+#     if return_hazard:
+#         return damage, hazard
+#     return damage
+# def estimate_affected(row, country, params):
+#     # Loop through tiles for each basin
+#     print(row.name)
+#     for tile in params['tiles']:
+#         # Get the raster of basin == the current basin
+#         fname = './data_exposures/{}_hybas_raster_{}.tif'.format(params['iso2'], tile)
+#         hybas = gtiff_to_array(fname)
+#         hybas_mask = (hybas == row.name)
+#         # Get the raster of population
+#         exp_fname = './data_exposures/gpw/{}_population_count_{}.tif'.format(params['iso2'], tile)
+#         exp = gtiff_to_array(exp_fname)
+#         exp[exp<0] = 0
+#         # Nearest neighbor went from 30s to 3s
+#         exp = exp/100
+#         # Get the total population by basin and store it
+#         assert hybas_mask.shape == exp.shape
+#         total_pop = (hybas_mask*exp)
+#         row['basin_pop'] += total_pop.sum()
+#         # Loop through return periods
+#         for rp in params['rps']:
+#             # Get the raster of boolean floods by return period
+#             fname = '{}{}-{}{}-{}-{}.tif'.format(params['folder'],c,params['type'],params['defended'], str(int(rp)), tile)
+#             floods = get_ssbn_array(fname)
+#             # Store the population affected for floods
+#             total_affected = vulnerability(floods, total_pop).sum()
+#             row[rp] += total_affected
+#     return row
+
+def vulnerability(hazard, method ='depth', return_hazard = False):
     # Assume all people that get flooded are damaged completely
     if method == 'depth':
         # Returns a % damage map based on EU data
         fd = flood_damage('sa')
-        # Change nans to 0 and round to 1 digit
-        hazard = np.nan_to_num(np.round(hazard, 1))
-        # Fast way to vectorize a dictionary lookup
-        replace = np.array([list(fd.index), list(fd.values)])    # Create 2D replacement matrix
-        # replace values with the %damages
-        hazard = replace[1, np.searchsorted(replace[0, :], hazard)]
+        # Change nans to 0
+        hazard = np.nan_to_num(hazard)
+        # Fast way to vectorize a sorted lookup (as opposed to a dictionary lookup)
+        indices = np.searchsorted(fd.index,hazard, side = 'right') - 1
+        damage = fd.values[indices]
     elif method == 'boolean':
-        hazard = hazard.astype(bool)
+        damage = hazard.astype(bool)
     else:
         raise AssertionError('vulnerability function not specified correctly')
-    damage = exposure * hazard
-    if return_hazard:
-        return damage, hazard
     return damage
 
+def get_assets_by_spatial_unit(row, basin_grid, exp):
+    """In a df with a different spatial unit in each row whose index corresponds to the
+    numbers in basin_grid,iteratively create a mask for each basin and sum the assets over each basin
+    """
+    hybas_mask = (basin_grid == row.name)
+    if hybas_mask.sum() == 0:
+        return row
+    tile_basin_assets = exp*hybas_mask
+    total = tile_basin_assets.sum()
+    if total > 0:
+        # Set a toggle for this basin, tile combination to 1, will skip later when apply % damages if 0.
+        row.check_this_tile = 1
+        print("Adding {} population to basin {}".format(total, row.name))
+        row['basin_pop'] += total
+        return row
+    else:
+        return row
 
-def estimate_affected(row, country, params):
-    # Loop through tiles for each basin
-    print(row.name)
+def get_damage_by_spatial_unit(row, damages, basin_grid, rp):
+    """In a df with a different spatial unit in each row whose index corresponds to the
+    numbers in basin_grid, iteratively create a mask for each basin and sum the damages over each basin
+    """
+    if not row.check_this_tile:
+        return row
+    hybas_mask = (basin_grid == row.name)
+    if hybas_mask.sum() == 0:
+        return row
+    tile_basin_damages = damages*hybas_mask
+    total = tile_basin_damages.sum()
+    print('{} damaged in basin {} at rp = {}'.format(total, row.name, rp))
+    row[rp] += total
+    return row
+
+def estimate_affected(df, params):
+    # Loop through tiles
     for tile in params['tiles']:
         # Get the raster of basin == the current basin
         fname = './data_exposures/{}_hybas_raster_{}.tif'.format(params['iso2'], tile)
         hybas = gtiff_to_array(fname)
-        hybas_mask = (hybas == row.name)
-        # Get the raster of population
         exp_fname = './data_exposures/gpw/{}_population_count_{}.tif'.format(params['iso2'], tile)
         exp = gtiff_to_array(exp_fname)
         exp[exp<0] = 0
         # Nearest neighbor went from 30s to 3s
         exp = exp/100
-        # Get the total population by basin and store it
-        assert hybas_mask.shape == exp.shape
-        total_pop = (hybas_mask*exp)
-        row['basin_pop'] += total_pop.sum()
-        # Loop through return periods
+        assert hybas.shape == exp.shape
+        print('TILE {} of {} tiles'.format(tile, len(params['tiles'])))
+        print('basin raster: {}'.format(fname))
+        print('asset raster: {}'.format(exp_fname))
+        # Create a list of tiles to run over that resets after each tile, if 0 it'll be skipped when computing damages
+        df['check_this_tile'] = 0
+        # Get assets by spatial unit
+        df = df.apply(get_assets_by_spatial_unit, axis = 1, result_type ='broadcast', basin_grid= hybas, exp = exp)
+        # Loop through rps
         for rp in params['rps']:
-            # Get the raster of boolean floods by return period
-            fname = '{}{}-{}{}-{}-{}.tif'.format(params['folder'],c,params['type'],params['defended'], str(int(rp)), tile)
-            floods = get_ssbn_array(fname)
-            # Store the population affected for floods
-            total_affected = vulnerability(floods, total_pop).sum()
-            row[rp] += total_affected
-    return row
+            # Get the raster of floods by return period
+            ssbn_fname = '{}{}-{}{}-{}-{}.tif'.format(params['folder'],c,params['type'],params['defended'], str(int(rp)), tile)
+            print('ssbn raster: {}'.format(ssbn_fname))
+            floods = get_ssbn_array(ssbn_fname)
+            # Store the % damage from floods
+            damages_percent = vulnerability(floods)
+            damages_total = damages_percent*exp
+            df = df.apply(get_damage_by_spatial_unit, axis = 1, damages = damages_total, basin_grid = hybas, rp = rp, result_type='broadcast')
+        df = df.drop('check_this_tile',axis =1)
+    return df
 
 # Resample assets grids (e.g. gpw) to the tile sizes that ssbn gives
 country = ['NG','AR','PE','CO']
+
 [resample_assets_to_ssbn_tiles(f) for c in country for f in sorted(glob.glob(folders(c)[0]+'*'))]
 # Unzip all basin data
 basins = './data_exposures/hydrobasins/'
@@ -317,33 +408,35 @@ floods, exposures = get_tiles(c,folder, params['rps'][0])
 a,gt,s = get_ssbn_array(floods[0], True)
 b = get_bounds(floods[0])
 
-country = ['CO','AR']
+
+country = ['AR','PE','CO']
 for c in country:
-    fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c)
-    folder = folders(c)[0]
-    flist = sorted(glob.glob(folder+'*'))
-    params = get_param_info(flist)
-    # Get the df of basins
-    df = filter_polygons(fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c))
-    # basins don't change with return period
-    floods, exposures = get_tiles(c,folder, params['rps'][0])
-    for tile in floods:
-        print(tile)
-        d = get_basic_info(tile)
-        outras = './data_exposures/{}_hybas_raster_{}.tif'.format(d['iso2'], d['tile'])
-        Rasterize(df,tile, outras)
-    # Initialize to 0
-    df['basin_pop'] = 0
-    for rp in params['rps']:
-        df[rp] = 0
-    # Apply over basins
-    df = df.apply(estimate_affected, axis = 1, country = c, params = params)
-    df.columns = [str(a) for a in df.columns]
-    df.to_file("{}_floods_rp_{}.geojson".format(c,params['type']+params['defended']), driver='GeoJSON')
-    # df.to_csv('{}_floods_rp_{}.csv'.format(c,params['type']+params['defended']))
-
-
-
+    for i in [0,1]:
+        # Toggles between fluvial and pluvial
+        folder = folders(c)[i]
+        flist = sorted(glob.glob(folder+'*'))
+        params = get_param_info(flist)
+        # Get the df of basins
+        fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c)
+        df = filter_polygons(fname = fname)
+        # basins don't change with return period
+        floods, exposures = get_tiles(c,folder, params['rps'][0])
+        for tile in floods:
+            print(tile)
+            d = get_basic_info(tile)
+            outras = './data_exposures/{}_hybas_raster_{}.tif'.format(d['iso2'], d['tile'])
+            # print(outras)
+            Rasterize(df, tile, outras)
+        # Initialize to 0
+        df['basin_pop'] = 0
+        for rp in params['rps']:
+            df[rp] = 0
+        # Apply over basins
+        df = estimate_affected(df, params)
+        df.columns = [str(a) for a in df.columns]
+        df.plot('basin_pop')
+        df.to_file("output/{}_floods_{}.geojson".format(c,params['type']+params['defended']), driver='GeoJSON')
+        # df.to_csv('{}_floods_rp_{}.csv'.format(c,params['type']+params['defended']))
 
 
 # SSBN Processing
