@@ -1,4 +1,17 @@
-# Python specific git-ignores
+# OSCAR specific git-ignores
+# file management - we don't want to upload data but want to replicate the folder structure
+
+# Shapefiles #
+*.shp
+*.shp.xml
+*.shx
+*.dbf
+*.prj
+*.sbn
+*.sbx
+
+# Python specific git-ignores #
+###############################
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
