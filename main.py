@@ -1,142 +1,149 @@
 # python ecosystem libraries
+import gdal
+import geopandas as gpd
 import glob
 import os
 import numpy as np
 import pandas as pd
 import sys
+
 # user defined libraries
 sys.path.append('lib/')
-# import ssbn
-import hydrobasins
-import tifs
-import geopandas as gpd
+import admin
+import exposures
+import ssbn
+from vulnerability_flood_depth import damage_function as flood_damage
+import vulnerability_flood_depth
 
-# Model parameters
-unzip_all = True
-
-# Unzip all data
-if unzip_all:
-    data_haz = './data_hazards/'
-    inputs = os.path.join(data_haz, 'ssbn/')
-    zips = sorted(glob.glob(inputs+'*.zip'))
-    for zip in zips:
-        ssbn.unzip(zip, inputs)
-
-    # Check availability of both folders
-    dir_fluvial, dir_pluvial = ssbn.folders(country)
-    flist = sorted(glob.glob(dir_fluvial+'*'))
-    ssbn.get_basic_info(flist[0])
-
-def simulate_losses(_df, n=int(1E5), iso2='AR'):
-    """Adapted from Brian Walsh hh_resilience_model"""
-    if type(_df.index) == pd.MultiIndex:
-        spatial_unit = _df.index.names[-1]
-        multi = True
-    else:
-        spatial_unit = _df.index.name
-    _df[1] = 0
-    _df = _df[sorted(_df.columns)]
-    _df = _df.stack().to_frame()
-    rps = np.array(list(_df.index.levels[-1].astype(int)))
-    if rps[0] != 1.:
-        rps = np.append([1.], [rps])
-    inv_rps = [1 / i for i in rps]
-    # final rps that you want to be able to comparae against GAR
-    final_rps = [1, 20, 50, 100, 250, 500, 1000, 1500, 2000]
-    # create dataframe of return periods
-    years = np.arange(0, n).astype(int)
-    loss = pd.DataFrame(index=_df.unstack().index, columns=years,
-                        data=1 / np.random.uniform(0, 1, (_df.unstack().shape[0], n)))
-    if not multi:
-        loss['iso2'] = iso2
-        loss.reset_index().set_index(('iso2', spatial_unit))
-    # generate random numbers using a lookup on numpy arrays
-    # (np.searchsorted(rps, loss.values, side = 'right')-1)
-    # Get the relevant return period to look up based on the probability
-    loss[years] = (np.searchsorted(rps, loss.values, side='right') - 1)
-    # lookup the relevant damage by basin by
-    loss = loss.apply(lambda row: _df.loc[row.name].values[row.values].reshape(
-        n), axis=1, result_type='broadcast')
-    lossc = loss.sum(level=_df.index.names[:-2])
-    lossc = lossc.apply(lambda row: row.sort_values(
-        ascending=False), axis=1, result_type='broadcast')
-    losscrp = lossc.values[:, (n / np.array(final_rps)).astype(int) - 1]
-
-    if multi:
-        # Get an empty dataframe with country, final rps as the x axis
-        final_exceedance = pd.DataFrame(
-            index=lossc.index, columns=final_rps, data=losscrp)
-    else:
-        final_exceedance = pd.DataFrame(
-            index=[c], columns=final_rps, data=losscrp)
-    return final_exceedance
-
-
-
-
-# load up geopandas dataframes with relative damages
-countries = ['AR', 'PE', 'CO']
-d  = []
-# Make a dataframe from all geojsons with a iso2/flood_type/basin index
-for c in countries:
-    for pf in ['FU', 'PU']:
-        # fname = "{}_floods_{}.geojson".format(c, pf)
-        # Will be deprecated next version
-        fname = "{}_floods_rp_{}.geojson".format(c, pf)
-        fname = os.path.join('output', fname)
-        df = gpd.read_file(fname)
-        df['iso2'] = c
-        df['flood_type'] = pf
-        df.index = pd.Int64Index(df.index)
-        df.index.name = 'basin'
-        df = df.reset_index().set_index(['iso2', 'flood_type', 'basin'])
-        d.append(df)
-df = pd.concat(d)
-total_pop = df['basin_pop'].astype(float).astype(int)
-# Filter columns ONLY to the columns with return period data
-print("deleted columns:", df.columns[:list(df.columns).index('basin_pop'):])
-df = df[df.columns[list(df.columns).index('basin_pop'):]]
-geometry = df['geometry']
-df = df.drop(['basin_pop', 'geometry'], axis=1)
-df.columns = df.columns.astype(int)
-df = df.astype(float)
-df['geometry'] = geometry
-
-df.loc['PE'].plot(1000, legend = True)
-
-
-affected = simulate_losses(df)
-fas = affected.divide(total_pop.sum(level=affected.index.names[:2]), axis=0)
-fas.columns.name = 'rp'
-fas.stack().to_csv('output/ssbn_derived_fas.csv')
-
-
-
-
-
-
-# Get to
-
-
-# Ideal Structure of model
-# Hazard class
+# Notes for iteration 2
+    # Make an interoperable Hazard class that works on SSBN, GAR, other gridded exposure data
     # Loads hazard data
     # Stores extents, xy grids
     # Return period management
     # Gives summary statistics
     # Crops to country borders if necessary.
-# Exposure class
+    # Make an Exposure class that works on different asset grids, can estimate ones from gdp grids (e.g. Kummu)
     # loads gridded exposure data
-        # Residential assets
-        # Industrial assets
-        # Commercial Assets
-        # Ag assets (cropland grids)
-        # infrastructure
-        # All assets
-        # Poor population
-        # Rich Population
+    # Residential assets
+    # Industrial assets
+    # Commercial Assets
+    # Ag assets (cropland grids)
+    # infrastructure
+    # All assets
+    # Poor population
+    # Rich Population
     # Calibrates against an external dataset or number
     # Calculates exposure bias
-# Vulnerability
+    # Vulnerability
     # Function that goes from hazard and exposure to a mathematical
     # function you can apply over both classes
+
+##################
+# SET PARAMETERS #
+##################
+# List of countries (can be name, iso2, or iso3)
+c = 'Argentina'
+c = admin.get_wbcountry(c)
+iso2 = admin.get_wbcountry(c, 'iso2')
+iso3 = admin.get_wbcountry(c, 'iso3')
+print('Countries being run on:', c, '\n')
+# administrative boundary level(s) to run on
+adm = 0
+# Pfascetter level to assume spatial correlation level at
+pfas = 4
+# Hydrobasins continent code - see hb_regions below
+hb_reg = 'sa'
+# Type of flood - 'pluvial' or 'fluvial'
+haz = 'fluvial'
+
+####################################
+# DATA AVAILABILITY CHECK AND PREP #
+####################################
+# - for each data source you want to load the respective non-RP datasets into memory
+# - check whether they all exist.
+
+# Hazard grid
+folder = ssbn.folders(iso2, haz)
+flist = sorted(glob.glob(folder + '*'))
+params = ssbn.get_param_info(flist)
+
+# Exposures grid
+a, gt, shape = exposures.get_asset_array()
+
+# Vulnerability function
+
+
+def vulnerability(hazard, method='depth'):
+    """Applies a vulnerability function to an array. Returns an array of
+    imputed damages as a % of assets"""
+    # Assume all people that get flooded are damaged completely
+    if method == 'depth':
+        # Returns a % damage map based on EU data
+        fd = flood_damage('sa')
+        # Change nans to 0
+        hazard = np.nan_to_num(hazard)
+        # Fast way to vectorize a sorted lookup (as opposed to a dictionary lookup)
+        indices = np.searchsorted(fd.index, hazard, side='right') - 1
+        damage = fd.values[indices]
+    elif method == 'boolean':
+        damage = hazard.astype(bool)
+    else:
+        raise AssertionError('vulnerability function not specified correctly')
+    return damage
+
+
+# Basins boundaries
+hb_regions = {'af': 'Africa',
+              'ar': 'North American Arctic',
+              'as': 'Central and South-East Asia',
+              'au': 'Australia and Oceania',
+              'eu': 'Europe and Middle East',
+              'gr': 'Greenland',
+              'na': 'North America and Caribbean',
+              'sa': 'South America',
+              'si': 'Siberia'}
+# TODO - write a key or function that takes a wb name and returns the hb dataset.
+# right now this is hardcoded.
+hb = './data/geobounds/hydrobasins/hybas_{}_lev0{}_v1c.shp'.format(
+    hb_reg, pfas)
+# Check if the data file for basins exists
+assert os.path.exists(
+    hb), "hydrobasins data file for chosen region and pfascetter level does not exist"
+
+# Admin boundaries
+
+# Administrative level for exceedance curves
+print("Administrative boundary data at the selected admin level {} available at {}"
+      .format(adm, admin.get_boundaries_fpath(adm)))
+
+###################
+# DATA PREPRATION #
+###################
+
+# Hazard grid
+# Exposures grid
+# Vulnerability function
+# Basins boundaries
+# Admin boundaries
+
+
+##############
+# MAIN MODEL #
+##############
+
+# START: you now have the following:
+# hazards & exposure grids,
+# vulnerability function,
+# basin & administrative boundaries
+
+# crop the hazard grids to the extent of the basins.
+# resample the exposure grids to the resolution of the hazard grids
+# apply the vulnerability function across the hazard and the exposure grid
+# sums the maximum total damage (spatial sum of exposure) and sums the damage at each return period for each basin
+# randomly samples n years of flooding where each basin is correlated.
+# calculate the total exposure for each administrative region
+# Create a (basin, admin boundary) matrix that shows the fraction of (admin, basin) exposure over basin exposure
+# Runs a simulation of n years of floods that are perfectly correlated across hydrological basins
+# Multiplies the n x basin matrix by the basin x admin boundary matrix to get a n x admin boundary matrix
+# Now sort the n x admin boundary matrix by impacts and divide by the total exposure per admin boundary to get the % damage by admin boundary
+# Checks whether data is all available, given the above Parameters - flags only if not available before any processing
