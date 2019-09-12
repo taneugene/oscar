@@ -63,23 +63,21 @@ haz = 'fluvial'
 # - check whether they all exist.
 
 # Hazard grid
-folder = ssbn.folders(iso2, haz)
-flist = sorted(glob.glob(folder + '*'))
-params = ssbn.get_param_info(flist)
-
+haz_folder = ssbn.folders(iso2, haz)
+haz_flist = sorted(glob.glob(haz_folder + '*'))
+haz_params = ssbn.get_param_info(haz_flist)
+haz_params
 # Exposures grid
-a, gt, shape = exposures.get_asset_array()
+expo, expo_gt, expo_shape = exposures.get_asset_array()
 
 # Vulnerability function
-
-
-def vulnerability(hazard, method='depth'):
+def vulnerability(hazard, method='depth', reg= 'sa'):
     """Applies a vulnerability function to an array. Returns an array of
     imputed damages as a % of assets"""
     # Assume all people that get flooded are damaged completely
     if method == 'depth':
         # Returns a % damage map based on EU data
-        fd = flood_damage('sa')
+        fd = flood_damage(reg)
         # Change nans to 0
         hazard = np.nan_to_num(hazard)
         # Fast way to vectorize a sorted lookup (as opposed to a dictionary lookup)
@@ -90,7 +88,6 @@ def vulnerability(hazard, method='depth'):
     else:
         raise AssertionError('vulnerability function not specified correctly')
     return damage
-
 
 # Basins boundaries
 hb_regions = {'af': 'Africa',
@@ -121,6 +118,8 @@ print("Administrative boundary data at the selected admin level {} available at 
 ###################
 
 # Hazard grid
+
+
 # Exposures grid
 # Vulnerability function
 # Basins boundaries

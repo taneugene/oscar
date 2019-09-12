@@ -79,7 +79,7 @@ def get_param_info(flist):
     lis = [get_basic_info(f) for f in flist]
     d = {}
     d['folder'] = lis[0]['folder']
-    d['flist'] = sorted(pd.Series([d['filename']for d in lis]).unique())
+    d['flist'] = flist
     d['defended'] = lis[0]['defended']
     d['iso2'] = lis[0]['iso2']
     d['type'] = lis[0]['type']
@@ -124,26 +124,6 @@ def get_ssbn_array(fname, return_geotransform=False):
 
 # Use gricells_to_adm0 function to simulate floods that are perfectly correlated across hydrobasins
 
-# def vulnerability(hazard, exposure, method ='depth', return_hazard = False):
-#     assert hazard.shape == exposure.shape
-#     # Assume all people that get flooded are damaged completely
-#     if method == 'depth':
-#         # Returns a % damage map based on EU data
-#         fd = flood_damage('sa')
-#         # Change nans to 0 and round to 1 digit
-#         hazard = np.nan_to_num(np.round(hazard, 1))
-#         # Fast way to vectorize a dictionary lookup
-#         replace = np.array([list(fd.index), list(fd.values)])    # Create 2D replacement matrix
-#         # replace values with the %damages
-#         hazard = replace[1, np.searchsorted(replace[0, :], hazard, side = 'right')-1]
-#     elif method == 'boolean':
-#         hazard = hazard.astype(bool)
-#     else:
-#         raise AssertionError('vulnerability function not specified correctly')
-#     damage = exposure * hazard
-#     if return_hazard:
-#         return damage, hazard
-#     return damage
 # def estimate_affected(row, country, params):
 #     # Loop through tiles for each basin
 #     print(row.name)
