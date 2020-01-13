@@ -14,10 +14,8 @@ import seaborn as sns
 from shapely.geometry import box, Point, Polygon
 import zipfile
 # from lib.vulnerability_flood_depth import damage_function as flood_damage
-
 # Keep in this file:
    # SSBN file management
-
 
 def unzip(path, pwd):
     """Unzips a zipfile unless the output folder already exists

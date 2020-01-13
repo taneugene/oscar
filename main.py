@@ -1,3 +1,28 @@
+# This script - 
+# Parameter Setting
+    # Sets Hazard parameters
+    # Set Exposure parameters
+    # Set Vulnerability params
+    # Set Damage aggregation parameters
+# Call separate libraries to get the different funcitons from each library
+    # Get the hazard layer
+        # hazard.ssbn or hazard.gar etc
+            # Based on the gridded depths or intensities
+            # This function assumes a spatial correlation for hazard intensity 
+            # (e.g. similar basins for floods, paths for hurricanes)
+            # and an
+    # Get the Exposure layer
+        # exposure.pop.gpw or exposure.worldpop or exposure.landsat
+    # Check that resolutions match
+        # native
+    # Apply the vectorized vulnerability function
+        # lib.vulnerability_flood_depth or other damage function
+    # Aggregate damage by basin/political boundary
+        # lib.aggregate
+    # Produce output
+# Summarize Data
+    # Make and visualize maps.
+
 # python ecosystem libraries
 import gdal
 import geopandas as gpd
@@ -14,6 +39,8 @@ import exposures
 import ssbn
 from vulnerability_flood_depth import damage_function as flood_damage
 import vulnerability_flood_depth
+
+
 
 # Notes for iteration 2
     # Make an interoperable Hazard class that works on SSBN, GAR, other gridded exposure data
@@ -118,8 +145,6 @@ print("Administrative boundary data at the selected admin level {} available at 
 ###################
 
 # Hazard grid
-
-
 # Exposures grid
 # Vulnerability function
 # Basins boundaries
