@@ -1,4 +1,9 @@
 # OSCAR specific git-ignores
+
+# Confidential data. Keep and push documentation pdfs but not the actual data. 
+data/admin/20160921_GAUL_GeoJSON_TopoJSON/
+data/ssbn/
+
 # file management - we don't want to upload data but want to replicate the folder structure
 
 # Shapefiles #
