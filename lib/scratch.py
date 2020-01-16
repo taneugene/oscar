@@ -158,6 +158,35 @@ def estimate_affected(df, params):
                           basin_grid=hybas, rp=rp, result_type='broadcast')
         df = df.drop('check_this_tile', axis=1)
     return df
+    
+    
+def estimate_affected(row, country, params):
+    # Loop through tiles for each basin
+    print(row.name)
+    for tile in params['tiles']:
+        # Get the raster of basin == the current basin
+        fname = './data_exposures/{}_hybas_raster_{}.tif'.format(params['iso2'], tile)
+        hybas = gtiff_to_array(fname)
+        hybas_mask = (hybas == row.name)
+        # Get the raster of population
+        exp_fname = './data_exposures/gpw/{}_population_count_{}.tif'.format(params['iso2'], tile)
+        exp = gtiff_to_array(exp_fname)
+        exp[exp<0] = 0
+        # Nearest neighbor went from 30s to 3s
+        exp = exp/100
+        # Get the total population by basin and store it
+        assert hybas_mask.shape == exp.shape
+        total_pop = (hybas_mask*exp)
+        row['basin_pop'] += total_pop.sum()
+        # Loop through return periods
+        for rp in params['rps']:
+            # Get the raster of boolean floods by return period
+            fname = '{}{}-{}{}-{}-{}.tif'.format(params['folder'],c,params['type'],params['defended'], str(int(rp)), tile)
+            floods = get_ssbn_array(fname)
+            # Store the population affected for floods
+            total_affected = vulnerability(floods, total_pop).sum()
+            row[rp] += total_affected
+    return row
 
 # Resample assets grids (e.g. gpw) to the tile sizes that ssbn gives
 country = ['NG', 'AR', 'PE', 'CO']

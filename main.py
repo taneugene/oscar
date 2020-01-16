@@ -10,38 +10,23 @@ import sys
 # user defined libraries
 sys.path.append('lib/')
 import admin
-import exposure.exposures as exposures
-import hazard.ssbn as ssbn
+import exposures
+import ssbn
 from vulnerability_flood_depth import damage_function as flood_damage
 import vulnerability_flood_depth
-
-# Parameter Setting
-    # Sets Hazard parameters
-    # Set Exposure parameters
-    # Set Vulnerability params
-    # Set Damage aggregation parameters
-# Call separate libraries to get the different funcitons from each library
-    # Get the hazard layer
-        # hazard.ssbn or hazard.gar etc
-    # Get the Exposure layer
-        # exposure.pop.gpw or exposure.worldpop or exposure.landsat
-    # Check that resolutions match
-        # native
-    # Apply the vectorized vulnerability function
-        # Based on the gridded depths or intensities
-        # This function assumes a spatial correlation for hazard intensity 
-        # And then simulates 1000s of potential hazards based on this spatial correlation
-        # For 
-        # lib.vulnerability_flood_depth or other damage function
-    # Aggregate damage by basin/political boundary
-        # lib.aggregate
-    # Produce output
-# Summarize Data
-    # Make and visualize maps.
 
 ##################
 # SET PARAMETERS #
 ##################
+
+# Parameter Setting
+    # Input country and data sources
+    # Sets Hazard parameters
+    # Set Exposure parameters
+    # Set Vulnerability params
+    # Set Damage aggregation parameters
+
+# COUNTRY AND DATA SOURCES
 
 # List of countries (can be name, iso2, or iso3)
 c = 'Argentina'
@@ -49,94 +34,95 @@ c = admin.get_wbcountry(c)
 iso2 = admin.get_wbcountry(c, 'iso2')
 iso3 = admin.get_wbcountry(c, 'iso3')
 print('Countries being run on:', c, '\n')
-# administrative boundary level(s) to run on
-adm = 0
-# Pfascetter level to assume spatial correlation level at
-pfas = 4
-# Hydrobasins continent code - see hb_regions below
-# TODO: need to make lookup table mapping countries to continents used in hydrobasins
-hb_region = 'sa' 
+
+# HAZARD PARAMETERS
 # Type of flood - 'pluvial' or 'fluvial'
 haz = 'fluvial'
-
-####################################
-# DATA AVAILABILITY CHECK AND PREP #
-####################################
-# - for each data source you want to load the respective non-RP datasets into memory
-# - check whether they all exist.
-
 # Hazard grid
 haz_folder = ssbn.folders(iso2, haz)
 haz_flist = sorted(glob.glob(haz_folder + '*'))
 haz_params = ssbn.get_param_info(haz_flist)
-# print(haz_params)
-# Exposures grid
+
+# EXPOSURE PARAMETERS
+exposure_source = 'worldpop' # 'gpw' or 'worldpop'
 # expo, expo_gt, expo_shape = exposures.get_asset_array() # gridded population of the workd
 expo_path = exposures.worldpop(iso3)
 
-# Basins boundaries
-hb_regions = {'af': 'Africa',
-              'ar': 'North American Arctic',
-              'as': 'Central and South-East Asia',
-              'au': 'Australia and Oceania',
-              'eu': 'Europe and Middle East',
-              'gr': 'Greenland',
-              'na': 'North America and Caribbean',
-              'sa': 'South America',
-              'si': 'Siberia'}
-# TODO - write a key or function that takes a wb name and returns the hb dataset.
-# right now this is hardcoded.
-hb = './data/hydrobasins/hybas_{}_lev0{}_v1c.shp'.format(
+# VULNERABILITY PARAMETERS
+
+
+# DATA AGRREGATION PARAMETERS
+# HYDROBASINS dataset
+# Pfascetter level to assume spatial correlation level at
+pfas = 4
+# TODO: need to make lookup table mapping countries to continents used in hydrobasins
+hb_region = 'sa' 
+hb_path = './data/hydrobasins/hybas_{}_lev0{}_v1c.shp'.format(
     hb_region, pfas)
 # Check if the data file for basins exists
-assert os.path.exists(
-    hb), "hydrobasins data file for chosen region and pfascetter level does not exist"
+assert os.path.exists(hb_path), "hydrobasins data file for chosen region and pfascetter level does not exist"
 
-# Admin boundaries
-
-# Administrative level for exceedance curves
-print("Administrative boundary data at the selected admin level {} available at {}"
-      .format(adm, admin.get_boundaries_fpath(adm)))
-
-###################
-# DATA PREPRATION #
-###################
-
-# Hazard grid
-# Exposures grid
-# Vulnerability function
-# Basins boundaries
-# Admin boundaries
-
+# administrative boundary level(s) to run on
+# adm = 0
+# adm_path = admin.get_boundaries_fpath(adm)
+# # Administrative level for exceedance curves
+# print("Administrative boundary data at the selected admin level {} available at {}"
+#       .format(adm, adm_path))
 
 ##############
 # MAIN MODEL #
 ##############
-
 # START: you now have the following:
 # hazards & exposure grids,
 # vulnerability function,
 # basin & administrative boundaries
+haz_params
+expo_path
+hb_path
+adm_path
 
-# crop the hazard grids to the extent of the basins.
-# resample the exposure grids to the resolution of the hazard grids
-# apply the vulnerability function across the hazard and the exposure grid
-# sums the maximum total damage (spatial sum of exposure) and sums the damage at each return period for each basin
-# randomly samples n years of flooding where each basin is correlated.
-# calculate the total exposure for each administrative region
-# Create a (basin, admin boundary) matrix that shows the fraction of (admin, basin) exposure over basin exposure
-# Runs a simulation of n years of floods that are perfectly correlated across hydrological basins
-# Multiplies the n x basin matrix by the basin x admin boundary matrix to get a n x admin boundary matrix
-# Now sort the n x admin boundary matrix by impacts and divide by the total exposure per admin boundary to get the % damage by admin boundary
-# Checks whether data is all available, given the above Parameters - flags only if not available before any processing
-# Loop_through_tifs:
-# Loop through the rows of the basin GeoDataFrame,
-# create a separate array for whether each point in a tiff is in the polygon or not
-# Multiply inPolygon * population * bool_depth = pop_affected
-# Multiply inPolygon * population = population in basin
-# Add both counts to the dataframe.
-# Write function that tells you whether cells in a tiff are inside a polygon or not.
-# Use gricells_to_adm0 function to simulate floods that are perfectly correlated across hydrobasins
+# Get the basin layer and assume that it is well correlated across the basin
+# Filter for the relevant admin layers. 
+
+    # Create a (basin, admin boundary) matrix that shows the fraction of (admin, basin) exposure over basin exposure
+
+# Now simulate 1000s of probabilities in an array that matches the extent of the basin
+# From the probabilities, (basin x sims)
+# map to a return period (1/probability) (basin x sims)
+# look up ssbn data for that return period and return flood depth # (lat x lon x sims)
+    # only complex because data is tiled
+    
+# preprocessing for next step:
+    # resample the exposure grids to the resolution of the hazard grids
+    # Write function that tells you whether cells in a tiff are inside a polygon or not.
+    # Loop_through_tifs:
+        # Loop through the rows of the basin GeoDataFrame,
+            # create a separate array for whether each point in a tiff is in the polygon or not
+
+# Map the flood depth to vulnerability # (sims x lat x lon) or (sims x basin)
+    # Assume exposures don't affect vulnerability
+        # Simple lookup map
+    # Otherwise tcd dhey affect vulnerability
+        # e.g. population -> land use -> different vulnerability functions
+    # Or multiple grids (sims x lat x lon x exposure dimensions) 
+        # vulnerability(industrial, flood_depth)
+        # vulnerability(residential, flood_depth)
+        # sum vulnerabilities
+    # Aggregate back up to sims x basin # sims x lat x lon is too big on memory
+        # Multiply inPolygon * population * bool_depth = pop_affected
+        # Multiply inPolygon * population = population in basin
+        # multiply damage fraction by exposures
+
+# Upscaling/aggregating
+    # use the basin x admin matrix to multiply by the basin x admin boundary matrix to get a sims x admin boundary matrix         
+    # calculate the total exposure for each administrative region
+        # sums the maximum total damage (spatial sum of exposure) for each simulation
+    # Calculate return period based on sorted version for each administrative region
+        # Now sort the n x admin boundary matrix by impacts and divide by the total exposure per admin boundary to get the % damage by admin boundary
+
+
+        
+
 
 
 # Notes for iteration 2
@@ -162,33 +148,3 @@ print("Administrative boundary data at the selected admin level {} available at 
     # Function that goes from hazard and exposure to a mathematical
     # function you can apply over both classes
     
-    
-
-
-def estimate_affected(row, country, params):
-    # Loop through tiles for each basin
-    print(row.name)
-    for tile in params['tiles']:
-        # Get the raster of basin == the current basin
-        fname = './data_exposures/{}_hybas_raster_{}.tif'.format(params['iso2'], tile)
-        hybas = gtiff_to_array(fname)
-        hybas_mask = (hybas == row.name)
-        # Get the raster of population
-        exp_fname = './data_exposures/gpw/{}_population_count_{}.tif'.format(params['iso2'], tile)
-        exp = gtiff_to_array(exp_fname)
-        exp[exp<0] = 0
-        # Nearest neighbor went from 30s to 3s
-        exp = exp/100
-        # Get the total population by basin and store it
-        assert hybas_mask.shape == exp.shape
-        total_pop = (hybas_mask*exp)
-        row['basin_pop'] += total_pop.sum()
-        # Loop through return periods
-        for rp in params['rps']:
-            # Get the raster of boolean floods by return period
-            fname = '{}{}-{}{}-{}-{}.tif'.format(params['folder'],c,params['type'],params['defended'], str(int(rp)), tile)
-            floods = get_ssbn_array(fname)
-            # Store the population affected for floods
-            total_affected = vulnerability(floods, total_pop).sum()
-            row[rp] += total_affected
-    return row

@@ -6,7 +6,7 @@ import os
 # CONVERT ANY COUNTRY INPUT TO A UNIQUE NAME #
 ##############################################
 
-# List of lookup tables to iterate over to get a unique values
+# List of lookup tables to iterate over to get a unique value
 country_wbcountry = pd.read_csv('data/admin/any_name_to_wb_name.csv', index_col=0).squeeze()
 iso2_wbcountry = pd.read_csv('data/admin/names_to_iso.csv', index_col=1)['country'].squeeze()
 iso3_wbcountry = pd.read_csv('data/admin/names_to_iso.csv', index_col=2)['country'].squeeze()
@@ -23,16 +23,30 @@ def in_series(dict_like, key):
 def get_wbcountry(country, lookups = country_lookups):
     """iteratively look through the lookup series and return the name if found.  Otherwise, return None"""
     if lookups == 'iso2':
+        country = country.upper()
         n = in_series(pd.read_csv('data/admin/names_to_iso.csv', index_col=0)['iso2'].squeeze(), country)
         if n: return n
     elif lookups =='iso3':
+        country = country.upper()
         n = in_series(pd.read_csv('data/admin/names_to_iso.csv', index_col=0)['iso3'].squeeze(), country)
         if n: return n
     elif lookups == country_lookups:
         for l in lookups:
+            # Check if it's in the series
             n = in_series(l, country)
             if n: return n
+            # Test the uppercase
+            n = in_series(l, country.upper())
+            if n: return n
+            # Test with the first letter upper case
+            n = in_series(l, country[0].upper() + country[1:])
+            if n: return n
     return None
+
+# Test
+# get_wbcountry('AG')
+# get_wbcountry('ARG')
+# get_wbcountry('argentina')
 
 # GET ADMINISTRATIVE BOUNDARIES FROM THE GAUL DATASET #
 #######################################################
@@ -57,6 +71,10 @@ def get_boundaries_fpath(level, adm_path = adm_path, adm_naming_convention = adm
         return path
     else:
         assert False, "Files at that administrative level do not exist\n check {}".format(path)
+
+# Test
+for i in range(0,2):
+    assert os.path.exists(get_boundaries_fpath(i))
 
 def get_adm_boundaries(level, country,adm_path = adm_path, adm_naming_convention = adm_naming_convention):
     """
