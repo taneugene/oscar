@@ -1,3 +1,12 @@
+# Ingest SSBN data
+
+# This script just grabs ssbn data given the country and different assumptions 
+# on the return period and type of flood. 
+# Inputs: zip file 
+# Want the final output to be called like hazard.ssbn.get('AR','fluvial','defended')
+# and to return an a structured glob of AR fluvials at different tiles and 
+# return periods OR have them all in memory.  
+
 import gdal
 import geopandas as gpd
 import glob
@@ -35,21 +44,29 @@ def unzip(path, pwd):
     print("Extracted {}".format(list((set(glob.glob(pwd + "*")) - fl))[0]))
     zip_ref.close()
 
+# # Test unzip
+# folder = 'data/ssbn'
+# path = folder + '/AR_pluvial_undefended.zip'
+# unzip (path, folder)
 
 def folders(c, flood_type, defended='undefended'):
     """checks availability of the folder for a particular country, flood type and defendedness"""
-    folder = "./data/hazards/ssbn/{}_{}_{}/".format(c, flood_type, defended)
+    folder = "./data/ssbn/{}_{}_{}/".format(c, flood_type, defended)
     if exists(folder):
         return folder
     else:
-        zip = folder + ".zip"
+        zip = folder[:-1] + ".zip"
     if exists(zip) and isfile(zip):
-        unzip(zip, folder)
+        unzip(zip, "data/ssbn")
         return folder
     else:
         print("Neither folder nor zip file exists in the correct place")
         return False
 
+# # Test folders
+# c = 'AR'
+# flood_type = 'fluvial'
+# folders(c, flood_type)
 
 def get_basic_info(path):
     """Retrieves information from the SSBN filename convention and
@@ -71,8 +88,6 @@ def get_basic_info(path):
     d['tile'] = int(m[5])
     d['defended'] = m[3]
     return d
-
-
 def get_param_info(flist):
     lis = [get_basic_info(f) for f in flist]
     d = {}
@@ -84,9 +99,6 @@ def get_param_info(flist):
     d['rps'] = sorted(pd.Series([d['return_period']for d in lis]).unique())
     d['tiles'] = sorted(pd.Series([d['tile']for d in lis]).unique())
     return d
-# Loading SSBN dataset
-
-
 def get_ssbn_array(fname, return_geotransform=False):
     """Open a gtiff and convert it to an array."""
     tif = gdal.Open(fname)
@@ -99,53 +111,3 @@ def get_ssbn_array(fname, return_geotransform=False):
         # return a tuple of array, geotransform, xysize
         return a, gt, (tif.RasterXSize, tif.RasterYSize)
     return a
-
-
-# SSBN Processing
-# Convert to boolean
-# GPW Processing
-# Nearest neighbor to ssbn grid
-# Basin processing`
-# Rasterizing to SSBN grid
-# 1/0
-
-
-# Loop_through_tifs:
-# Loop through the rows of the basin GeoDataFrame,
-# create a separate array for whether each point in a tiff is in the polygon or not
-# Multiply inPolygon * population * bool_depth = pop_affected
-# Multiply inPolygon * population = population in basin
-# Add both counts to the dataframe.
-
-
-# Write function that tells you whether cells in a tiff are inside a polygon or not.
-
-# Use gricells_to_adm0 function to simulate floods that are perfectly correlated across hydrobasins
-
-# def estimate_affected(row, country, params):
-#     # Loop through tiles for each basin
-#     print(row.name)
-#     for tile in params['tiles']:
-#         # Get the raster of basin == the current basin
-#         fname = './data_exposures/{}_hybas_raster_{}.tif'.format(params['iso2'], tile)
-#         hybas = gtiff_to_array(fname)
-#         hybas_mask = (hybas == row.name)
-#         # Get the raster of population
-#         exp_fname = './data_exposures/gpw/{}_population_count_{}.tif'.format(params['iso2'], tile)
-#         exp = gtiff_to_array(exp_fname)
-#         exp[exp<0] = 0
-#         # Nearest neighbor went from 30s to 3s
-#         exp = exp/100
-#         # Get the total population by basin and store it
-#         assert hybas_mask.shape == exp.shape
-#         total_pop = (hybas_mask*exp)
-#         row['basin_pop'] += total_pop.sum()
-#         # Loop through return periods
-#         for rp in params['rps']:
-#             # Get the raster of boolean floods by return period
-#             fname = '{}{}-{}{}-{}-{}.tif'.format(params['folder'],c,params['type'],params['defended'], str(int(rp)), tile)
-#             floods = get_ssbn_array(fname)
-#             # Store the population affected for floods
-#             total_affected = vulnerability(floods, total_pop).sum()
-#             row[rp] += total_affected
-#     return row

@@ -7,9 +7,9 @@ import os
 ##############################################
 
 # List of lookup tables to iterate over to get a unique values
-country_wbcountry = pd.read_csv('data/geobounds/admin/any_name_to_wb_name.csv', index_col=0).squeeze()
-iso2_wbcountry = pd.read_csv('data/geobounds/admin/names_to_iso.csv', index_col=1)['country'].squeeze()
-iso3_wbcountry = pd.read_csv('data/geobounds/admin/names_to_iso.csv', index_col=2)['country'].squeeze()
+country_wbcountry = pd.read_csv('data/admin/any_name_to_wb_name.csv', index_col=0).squeeze()
+iso2_wbcountry = pd.read_csv('data/admin/names_to_iso.csv', index_col=1)['country'].squeeze()
+iso3_wbcountry = pd.read_csv('data/admin/names_to_iso.csv', index_col=2)['country'].squeeze()
 country_lookups = [country_wbcountry,iso2_wbcountry, iso3_wbcountry]
 
 def in_series(dict_like, key):
@@ -23,10 +23,10 @@ def in_series(dict_like, key):
 def get_wbcountry(country, lookups = country_lookups):
     """iteratively look through the lookup series and return the name if found.  Otherwise, return None"""
     if lookups == 'iso2':
-        n = in_series(pd.read_csv('data/geobounds/admin/names_to_iso.csv', index_col=0)['iso2'].squeeze(), country)
+        n = in_series(pd.read_csv('data/admin/names_to_iso.csv', index_col=0)['iso2'].squeeze(), country)
         if n: return n
     elif lookups =='iso3':
-        n = in_series(pd.read_csv('data/geobounds/admin/names_to_iso.csv', index_col=0)['iso3'].squeeze(), country)
+        n = in_series(pd.read_csv('data/admin/names_to_iso.csv', index_col=0)['iso3'].squeeze(), country)
         if n: return n
     elif lookups == country_lookups:
         for l in lookups:
@@ -42,7 +42,7 @@ def get_wbcountry(country, lookups = country_lookups):
 # The file sizes here are big, but the alternative to reading in directly using
 # gpd.read_file is to write a library that would stream GEOJSON.
 
-adm_path = "data/geobounds/admin/20160921_GAUL_GeoJSON_TopoJSON/GeoJSON/"
+adm_path = "data/admin/20160921_GAUL_GeoJSON_TopoJSON/GeoJSON/"
 adm_naming_convention = "g2015_2014_{0}.geojson"
 
 def get_boundaries_fpath(level, adm_path = adm_path, adm_naming_convention = adm_naming_convention):
