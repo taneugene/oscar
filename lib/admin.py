@@ -76,14 +76,25 @@ def get_boundaries_fpath(level, adm_path = adm_path, adm_naming_convention = adm
 for i in range(0,2):
     assert os.path.exists(get_boundaries_fpath(i))
 
-def get_adm_boundaries(level, country,adm_path = adm_path, adm_naming_convention = adm_naming_convention):
+def get_admin_boundaries(country, levels = range(0,3), adm_path = adm_path, adm_naming_convention = adm_naming_convention):
     """
-    Returns the adm1 boundaries as a GeoDataFrame of a country, if country isn't in the GeoJSON,
+    Returns the admboundaries as a GeoDataFrame of a country, if country isn't in the GeoJSON,
     print the full list of unique countries in the dataset"""
-    df = gpd.read_file(get_boundaries_fpath(level,adm_path = adm_path, adm_naming_convention = adm_naming_convention))
-    filtered = df.ADM0_NAME == country
-    if filtered.sum() == 0:
-        print('country not found')
-        return sorted(df.ADM0_NAME.unique())
+    fname = 'data/admin/intermediate/{}2015_2014_all.geojson'
+    if not os.path.exists(fname):
+        adms = []
+        for i in levels:
+            print('loading adm{} shapefile'.format(i))    
+            df = gpd.read_file(get_boundaries_fpath(i,adm_path,adm_naming_convention))
+            adms.append(df[df.ADM0_NAME == country])
+            del df
+        df = pd.concat(adms, sort = True)
     else:
-        return df[df.ADM0_NAME == country]
+        print('country geojson extracted from GAUL dataset already exists')
+        print('Reading {}'.format(fname))
+        df = gpd.read_file(fname)
+    return df
+
+# Test
+get_admin_boundaries('Argentina')
+    

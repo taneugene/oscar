@@ -63,6 +63,7 @@ hb_path = './data/hydrobasins/hybas_{}_lev0{}_v1c.shp'.format(
 assert os.path.exists(hb_path), "hydrobasins data file for chosen region and pfascetter level does not exist"
 
 # administrative boundary level(s) to run on
+levels = [0,1,2]
 # adm = 0
 # adm_path = admin.get_boundaries_fpath(adm)
 # # Administrative level for exceedance curves
