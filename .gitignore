@@ -6,6 +6,9 @@ data/ssbn/
 
 # file management - we don't want to upload data but want to replicate the folder structure
 
+# Unix swap files
+*.sh.swp
+
 # Shapefiles #
 *.shp
 *.shp.xml
