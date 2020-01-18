@@ -26,6 +26,12 @@ conda install -y rasterio -c conda-forge
 
 ## Downloads
 
+### Some data downloads natively as part of the script
+e.g. WorldPop datasets for each country
+
+### Hydrobasins
+go to the [hydrobasins](data/hydrobasins) folder and then run the download_data.sh script. You may have to use `chmod +x` to give your computer the ability to run the script.  
+
 ### Geospatial Boundaries
 Get the GAUL dataset from the world bank microcatalog. 
 put it in data/admin/20160921_gaul_geojson_topojson.zip
@@ -35,9 +41,6 @@ cd data/admin
 unzip 20160921_gaul_geojson_topojson.zip
 cd ../..
 ```
-
-### Hydrobasins
-go to the [hydrobasins](data/hydrobasins) folder and then run the download_data.sh script. You may have to use `chmod +x` to give your computer the ability to run the script.  
 
 ### Hazard Data
 
