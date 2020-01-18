@@ -1,7 +1,6 @@
 import gdal
 import json
 import requests
-from ftplib import FTP
 import os
 import shutil
 import urllib.request as request
@@ -38,7 +37,7 @@ def worldpop(iso3, year = 2020):
     fname = url[len(url) - url[::-1].find('/'):]
     path = 'data/worldpop/{}'.format(fname)
     if not os.path.exists(path):
-        print('Downloading {} to {}'.format(url, fname))
+        print('Downloading {} to {}'.format(url, path))
         with closing(request.urlopen(url)) as r:
             with open(path, 'wb') as f:
                 shutil.copyfileobj(r, f)

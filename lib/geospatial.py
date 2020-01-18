@@ -1,4 +1,8 @@
 # Tif loading functions
+import geopandas as gpd
+import rasterio
+import gdal
+from shapely.geometry import box
 
 def mosaic(flist):
     """Mosaics or merges by tiling several files"""
@@ -76,7 +80,7 @@ def get_tiles(country, folder, rp):
     return floods, exposures
 # Getting basin data
 
-def filter_polygons(fname, hb='./data/geobounds/hydrobasins/hybas_sa_lev04_v1c.shp'):
+def filter_polygons(country_tif, hb='./data/geobounds/hydrobasins/hybas_sa_lev04_v1c.shp'):
     """Filters a shapefile based on whether the polygons intersect with
     a bounding box based on a geotiff fname."""
     # get south american basins
@@ -86,7 +90,7 @@ def filter_polygons(fname, hb='./data/geobounds/hydrobasins/hybas_sa_lev04_v1c.s
     #  Get a list of hydrobasins
     df = gpd.read_file(hb)
     # Get the extent of
-    b = gpd.GeoSeries(box(*get_bounds(fname, False)),
+    b = gpd.GeoSeries(box(*get_bounds(country_tif, False)),
                       crs={'init': 'epsg:4326'})
     # Need to forward the crs manually wtf geopandas
     b = gpd.GeoDataFrame(b, columns=['geometry'], crs=b.crs)

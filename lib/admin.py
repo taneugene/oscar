@@ -23,11 +23,9 @@ def in_series(dict_like, key):
 def get_wbcountry(country, lookups = country_lookups):
     """iteratively look through the lookup series and return the name if found.  Otherwise, return None"""
     if lookups == 'iso2':
-        country = country.upper()
         n = in_series(pd.read_csv('data/admin/names_to_iso.csv', index_col=0)['iso2'].squeeze(), country)
         if n: return n
     elif lookups =='iso3':
-        country = country.upper()
         n = in_series(pd.read_csv('data/admin/names_to_iso.csv', index_col=0)['iso3'].squeeze(), country)
         if n: return n
     elif lookups == country_lookups:
@@ -41,7 +39,8 @@ def get_wbcountry(country, lookups = country_lookups):
             # Test with the first letter upper case
             n = in_series(l, country[0].upper() + country[1:])
             if n: return n
-    return None
+    else:
+        return None
 
 # Test
 # get_wbcountry('AG')
@@ -80,7 +79,7 @@ def get_admin_boundaries(country, levels = range(0,3), adm_path = adm_path, adm_
     """
     Returns the admboundaries as a GeoDataFrame of a country, if country isn't in the GeoJSON,
     print the full list of unique countries in the dataset"""
-    fname = 'data/admin/intermediate/{}2015_2014_all.geojson'
+    fname = 'data/admin/{}2015_2014_all.geojson'.format(country.lower())
     if not os.path.exists(fname):
         adms = []
         for i in levels:
@@ -89,6 +88,7 @@ def get_admin_boundaries(country, levels = range(0,3), adm_path = adm_path, adm_
             adms.append(df[df.ADM0_NAME == country])
             del df
         df = pd.concat(adms, sort = True)
+        df.to_file(fname, driver='GeoJSON')
     else:
         print('country geojson extracted from GAUL dataset already exists')
         print('Reading {}'.format(fname))
@@ -96,5 +96,5 @@ def get_admin_boundaries(country, levels = range(0,3), adm_path = adm_path, adm_
     return df
 
 # Test
-get_admin_boundaries('Argentina')
+# get_admin_boundaries('Argentina')
     
