@@ -1,8 +1,95 @@
 # Tif loading functions
 import geopandas as gpd
 import rasterio
+from rasterio import features
 import gdal
+from os.path import exists
+import numpy as np
 from shapely.geometry import box
+
+def shapefile2raster(shapefile, inras, outras):
+    print('burning shapefile geometry to a raster')
+    if exists(outras):
+        print('{} already exists'.format(outras))        
+        return rasterio.open(outras).read(1)
+    with rasterio.open(inras) as src:
+        kwargs = src.meta.copy()
+        kwargs.update({
+            'driver': 'GTiff',
+            'compress': 'DEFLATE',
+            'dtype':'int32' # This assumes the index is only integers...
+        })
+        transform = src.transform
+        nodata = src.nodata
+        out_shape = src.read(1).shape
+    # print(kwargs)
+    assert nodata != 0 # make sure it isn't 0
+    # BUG IN SOURCE CODE: fill isn't implemented well in rasterio, still defaults to 0
+    # quick workaround # use default_value instead?
+    # shift = 1
+    with rasterio.open(outras, 'w', **kwargs) as dst:
+        # this is where we create a generator of geom, value pairs to use in rasterizing
+        shapes = ((geom, value) for geom, value in zip(
+            shapefile.geometry, shapefile.index))
+        burned = features.rasterize(
+            shapes=shapes, fill=nodata, default_value=nodata, out_shape = out_shape, transform=transform)
+        dst.write_band(1, burned.astype(kwargs['dtype']))
+        return burned 
+
+def get_bounds(fname, shp=False):
+    tif = gdal.Open(fname)
+    gt, ts = tif.GetGeoTransform(), (tif.RasterXSize, tif.RasterYSize)
+    if shp:
+        return [Point(gt[0], gt[3]), Point(gt[0] + gt[1] * ts[0], gt[3] + gt[5] * ts[1])]
+    else:
+        return [gt[0], gt[3], gt[0] + gt[1] * ts[0], gt[3] + gt[5] * ts[1]]
+
+# Getting exposure data
+def get_tiles(country, folder, rp):
+    floods = sorted(glob.glob(folder + country + \
+                    '-*-' + str(rp) + '-*.tif'))
+    exposures = sorted(glob.glob('data_exposures/gpw/{}*'.format(c)))[:-1]
+    return floods, exposures
+# Getting basin data
+
+def filter_polygons(country_tif, hb='./data/geobounds/hydrobasins/hybas_sa_lev04_v1c.shp'):
+    """Filters a shapefile based on whether the polygons intersect with
+    a bounding box based on a geotiff fname."""
+    # TODO: convert getbounds to a rasterio function. Should be super easy 
+    # get south american basins
+    # pfa = sorted(glob.glob(basins+'*sa*.shp'))
+    # Use pfascetter level 4
+    # gpd.read_file(pfa[3])['geometry'].plot()
+    #  Get a list of hydrobasins
+    df = gpd.read_file(hb)
+    # Get the extent of
+    b = gpd.GeoSeries(box(*get_bounds(country_tif, False)),
+                      crs={'init': 'epsg:4326'})
+    # Need to forward the crs manually wtf geopandas
+    b = gpd.GeoDataFrame(b, columns=['geometry'], crs=b.crs)
+    return gpd.overlay(b, df, how='intersection')
+
+
+
+
+
+def gtiff_to_array(fname, get_global=False):
+    """Open a gtiff and convert it to an array.  Store coordinates in global variables if toggle is on"""
+    tif = gdal.Open(fname)
+    a = tif.ReadAsArray()
+    gt = tif.GetGeoTransform()
+    if get_global:
+        print(gdal.Info(tif))
+        global lons, lats, loni, lati, xx, yy, xi, yi
+        lons = np.array([round(gt[0] + gt[1] * i, 5)
+                         for i in range(a.shape[1])])
+        lats = np.array([round(gt[3] + gt[5] * i, 5)
+                         for i in range(a.shape[0])])
+        loni = np.array([i for i in range(a.shape[1])])
+        lati = np.array([i for i in range(a.shape[0])])
+        xx, yy = np.meshgrid(lons, lats)
+        xi, yi = np.meshgrid(loni, lati)
+    return a
 
 def mosaic(flist):
     """Mosaics or merges by tiling several files"""
@@ -42,60 +129,6 @@ def convert_nulls(ssbn_array):
     # Null values, sea/ocean tiles with no possible flooding.
     a[a == 999] = np.nan
     return a
-
-def get_bounds(fname, shp=False):
-    tif = gdal.Open(fname)
-    gt, ts = tif.GetGeoTransform(), (tif.RasterXSize, tif.RasterYSize)
-    if shp:
-        return [Point(gt[0], gt[3]), Point(gt[0] + gt[1] * ts[0], gt[3] + gt[5] * ts[1])]
-    else:
-        return [gt[0], gt[3], gt[0] + gt[1] * ts[0], gt[3] + gt[5] * ts[1]]
-
-def Rasterize(shapefile, inras, outras):
-    # if the outraster already exists
-    if exists(outras):
-        print('{} already exists'.format(outras))
-        return
-    #
-    with rasterio.open(inras) as src:
-        kwargs = src.meta.copy()
-        kwargs.update({
-            'driver': 'GTiff',
-            'compress': 'DEFLATE'
-        })
-        with rasterio.open(outras, 'w', **kwargs) as dst:
-            out_arr = np.zeros_like(src.read(1))
-            # this is where we create a generator of geom, value pairs to use in rasterizing
-            shapes = ((geom, value) for geom, value in zip(
-                shapefile.geometry, shapefile.index))
-            burned = features.rasterize(
-                shapes=shapes, fill=0, out=out_arr, transform=src.transform)
-            dst.write_band(1, burned)
-# Getting exposure data
-
-def get_tiles(country, folder, rp):
-    floods = sorted(glob.glob(folder + country + \
-                    '-*-' + str(rp) + '-*.tif'))
-    exposures = sorted(glob.glob('data_exposures/gpw/{}*'.format(c)))[:-1]
-    return floods, exposures
-# Getting basin data
-
-def filter_polygons(country_tif, hb='./data/geobounds/hydrobasins/hybas_sa_lev04_v1c.shp'):
-    """Filters a shapefile based on whether the polygons intersect with
-    a bounding box based on a geotiff fname."""
-    # get south american basins
-    # pfa = sorted(glob.glob(basins+'*sa*.shp'))
-    # Use pfascetter level 4
-    # gpd.read_file(pfa[3])['geometry'].plot()
-    #  Get a list of hydrobasins
-    df = gpd.read_file(hb)
-    # Get the extent of
-    b = gpd.GeoSeries(box(*get_bounds(country_tif, False)),
-                      crs={'init': 'epsg:4326'})
-    # Need to forward the crs manually wtf geopandas
-    b = gpd.GeoDataFrame(b, columns=['geometry'], crs=b.crs)
-    return gpd.overlay(b, df, how='intersection')
-# Checking maximum exposure by basin
 
 def get_assets_by_spatial_unit(row, basin_grid, exp):
     """In a df with a different spatial unit in each row whose index corresponds to the

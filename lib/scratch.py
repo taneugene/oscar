@@ -1,5 +1,3 @@
-
-
 # Unzips and prepares all data, stores an admin layer, cropped gridded layer,
 # exposure layer, hydrological boundary layer for each country or admin level.
 
@@ -16,28 +14,7 @@ if unzip_exposures:
     flist = sorted(glob.glob(dir_fluvial + '*'))
     ssbn.get_basic_info(flist[0])
 
-
-def gtiff_to_array(fname, get_global=False):
-    """Open a gtiff and convert it to an array.  Store coordinates in global variables if toggle is on"""
-    tif = gdal.Open(fname)
-    a = tif.ReadAsArray()
-    gt = tif.GetGeoTransform()
-    if get_global:
-        print(gdal.Info(tif))
-        global lons, lats, loni, lati, xx, yy, xi, yi
-        lons = np.array([round(gt[0] + gt[1] * i, 5)
-                         for i in range(a.shape[1])])
-        lats = np.array([round(gt[3] + gt[5] * i, 5)
-                         for i in range(a.shape[0])])
-        loni = np.array([i for i in range(a.shape[1])])
-        lati = np.array([i for i in range(a.shape[0])])
-        xx, yy = np.meshgrid(lons, lats)
-        xi, yi = np.meshgrid(loni, lati)
-    return a
-
 # Function to simulation floods from a _df
-
-
 def simulate_losses(_df, n=int(1E5), iso2='AR'):
     """
     maps randomly generated probabilities to damages.  iteratively does this
@@ -86,42 +63,6 @@ def simulate_losses(_df, n=int(1E5), iso2='AR'):
 
 # Builds a df with return period x basin to simulate floods in each basin, which
 # is then multiplied by a basin x country matrix to give a return period x country matrix.
-
-
-# load up geopandas dataframes with relative damages
-countries = ['AR', 'PE', 'CO']
-d = []
-# Make a dataframe from all geojsons with a iso2/flood_type/basin index
-# These geojsons include return periods x basin damages.
-for c in countries:
-    for pf in ['FU', 'PU']:
-        # fname = "{}_floods_{}.geojson".format(c, pf)
-        # Will be deprecated next version
-        fname = "{}_floods_rp_{}.geojson".format(c, pf)
-        fname = os.path.join('output', fname)
-        df = gpd.read_file(fname)
-        df['iso2'] = c
-        df['flood_type'] = pf
-        df.index = pd.Int64Index(df.index)
-        df.index.name = 'basin'
-        df = df.reset_index().set_index(['iso2', 'flood_type', 'basin'])
-        d.append(df)
-df = pd.concat(d)
-total_pop = df['basin_pop'].astype(float).astype(int)
-# Filter columns ONLY to the columns with return period data
-print("deleted columns:", df.columns[:list(df.columns).index('basin_pop'):])
-df = df[df.columns[list(df.columns).index('basin_pop'):]]
-geometry = df['geometry']
-df = df.drop(['basin_pop', 'geometry'], axis=1)
-df.columns = df.columns.astype(int)
-df = df.astype(float)
-df['geometry'] = geometry
-df.loc['PE'].plot(1000, legend=True)
-affected = simulate_losses(df)
-fas = affected.divide(total_pop.sum(level=affected.index.names[:2]), axis=0)
-fas.columns.name = 'rp'
-fas.stack().to_csv('output/ssbn_derived_fas.csv')
-
 def estimate_affected(df, params):
     # Loop through tiles
     for tile in params['tiles']:
@@ -158,35 +99,6 @@ def estimate_affected(df, params):
                           basin_grid=hybas, rp=rp, result_type='broadcast')
         df = df.drop('check_this_tile', axis=1)
     return df
-    
-    
-def estimate_affected(row, country, params):
-    # Loop through tiles for each basin
-    print(row.name)
-    for tile in params['tiles']:
-        # Get the raster of basin == the current basin
-        fname = './data_exposures/{}_hybas_raster_{}.tif'.format(params['iso2'], tile)
-        hybas = gtiff_to_array(fname)
-        hybas_mask = (hybas == row.name)
-        # Get the raster of population
-        exp_fname = './data_exposures/gpw/{}_population_count_{}.tif'.format(params['iso2'], tile)
-        exp = gtiff_to_array(exp_fname)
-        exp[exp<0] = 0
-        # Nearest neighbor went from 30s to 3s
-        exp = exp/100
-        # Get the total population by basin and store it
-        assert hybas_mask.shape == exp.shape
-        total_pop = (hybas_mask*exp)
-        row['basin_pop'] += total_pop.sum()
-        # Loop through return periods
-        for rp in params['rps']:
-            # Get the raster of boolean floods by return period
-            fname = '{}{}-{}{}-{}-{}.tif'.format(params['folder'],c,params['type'],params['defended'], str(int(rp)), tile)
-            floods = get_ssbn_array(fname)
-            # Store the population affected for floods
-            total_affected = vulnerability(floods, total_pop).sum()
-            row[rp] += total_affected
-    return row
 
 # Resample assets grids (e.g. gpw) to the tile sizes that ssbn gives
 country = ['NG', 'AR', 'PE', 'CO']
@@ -212,29 +124,73 @@ df = filter_polygons(fname)
 tiles = sorted((glob.glob(folder + '*')))
 params = get_param_info(tiles)
 floods, exposures = get_tiles(c, folder, params['rps'][0])
+# This is a test to try only on one item, ignore this now
 a, gt, s = get_ssbn_array(floods[0], True)
 b = get_bounds(floods[0])
 
 
 # Get the df of basins
 fname = 'data_exposures/gpw/{}_population_count_all.tif'.format(c)
-df = filter_polygons(fname=fname)
+
+df = filter_polygons(fname=fname) # filters to the south america basins
+
 # basins don't change with return period
+
+# gets the cropped gpw tiles
 floods, exposures = get_tiles(c, folder, params['rps'][0])
+# makes a hybas raster tiles
 for tile in floods:
     print(tile)
     d = get_basic_info(tile)
     outras = './data_exposures/{}_hybas_raster_{}.tif'.format(
         d['iso2'], d['tile'])
     # print(outras)
+    # burns the hydrobasin to a raster
     Rasterize(df, tile, outras)
+
 # Initialize to 0
 df['basin_pop'] = 0
 for rp in params['rps']:
     df[rp] = 0
+
 # Apply over basins
 df = estimate_affected(df, params)
 df.columns = [str(a) for a in df.columns]
 df.plot('basin_pop')
 df.to_file("output/{}_floods_{}.geojson".format(c,
                                                 params['type'] + params['defended']), driver='GeoJSON')
+
+
+# load up geopandas dataframes with relative damages
+countries = ['AR', 'PE', 'CO']
+d = []
+# Make a dataframe from all geojsons with a iso2/flood_type/basin index
+# These geojsons include return periods x basin damages.
+for c in countries:
+    for pf in ['FU', 'PU']:
+        # fname = "{}_floods_{}.geojson".format(c, pf)
+        # Will be deprecated next version
+        fname = "{}_floods_rp_{}.geojson".format(c, pf)
+        fname = os.path.join('output', fname)
+        df = gpd.read_file(fname)
+        df['iso2'] = c
+        df['flood_type'] = pf
+        df.index = pd.Int64Index(df.index)
+        df.index.name = 'basin'
+        df = df.reset_index().set_index(['iso2', 'flood_type', 'basin'])
+        d.append(df)
+df = pd.concat(d)
+total_pop = df['basin_pop'].astype(float).astype(int)
+# Filter columns ONLY to the columns with return period data
+print("deleted columns:", df.columns[:list(df.columns).index('basin_pop'):])
+df = df[df.columns[list(df.columns).index('basin_pop'):]]
+geometry = df['geometry']
+df = df.drop(['basin_pop', 'geometry'], axis=1)
+df.columns = df.columns.astype(int)
+df = df.astype(float)
+df['geometry'] = geometry
+df.loc['PE'].plot(1000, legend=True)
+affected = simulate_losses(df)
+fas = affected.divide(total_pop.sum(level=affected.index.names[:2]), axis=0)
+fas.columns.name = 'rp'
+fas.stack().to_csv('output/ssbn_derived_fas.csv')
