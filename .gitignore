@@ -25,6 +25,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Ipython checkpoints
+.ipynb_checkpoints/
+
 # Large data files not for upload
 *.tif
 
