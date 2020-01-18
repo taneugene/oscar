@@ -18,6 +18,10 @@ data/ssbn/
 *.sbn
 *.sbx
 
+# Other geospatial data  not for upload
+*.tif
+*.geojson
+
 # Python specific git-ignores #
 ###############################
 # Byte-compiled / optimized / DLL files
@@ -27,9 +31,6 @@ __pycache__/
 
 # Ipython checkpoints
 .ipynb_checkpoints/
-
-# Large data files not for upload
-*.tif
 
 # Boilerplate gitignores
 # from https://gist.github.com/octocat/9257657
